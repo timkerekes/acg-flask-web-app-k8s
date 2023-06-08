@@ -1,0 +1,68 @@
+name: Docker Compose Deploy
+
+on:
+  workflow_run:
+    workflows: ["Docker Build Image CI"]
+    branches: [main]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Create env file
+      run: |
+        cd /home/runner/work/acg-flask-web-app/acg-flask-web-app
+        touch .env
+        echo "${{ secrets.SERVER_ENV_PROD }}" > .env
+
+    - name: Remove Workspace Folder
+      uses: fifsky/ssh-action@v0.0.6
+      with:
+        command: |
+          cd ~
+          rm -rf workspace
+        host: ${{ secrets.HOST }}
+        user: jenkins
+        key: ${{ secrets.PRIVATE_KEY }}
+        args: -tt
+    
+    - name: SCP Upload
+      uses: betanzos/scp-upload@v1
+      with:
+        source: /home/runner/work/acg-flask-web-app/acg-flask-web-app
+        host: ${{ secrets.HOST }}
+        username: jenkins
+        key: ${{ secrets.PRIVATE_KEY }}
+        remote_dir: ~
+        recursive: true
+
+    - name: Run Docker Compose Up
+      uses: fifsky/ssh-action@v0.0.6
+      with:
+        command: |
+          cd ~/workspace
+          docker compose down --remove-orphans
+          docker compose up -d --build
+          docker ps
+        host: ${{ secrets.HOST }}
+        user: jenkins
+        key: ${{ secrets.PRIVATE_KEY }}
+        args: -tt
+
+    - name: Flask DB Migrate & Upgrade
+      uses: fifsky/ssh-action@v0.0.6
+      with:
+        command: |
+          docker exec workspace-webapp-1 /bin/sh -c 'flask db init'
+          docker exec workspace-webapp-1 /bin/sh -c 'flask db migrate'
+          docker exec workspace-webapp-1 /bin/sh -c 'flask db upgrade'
+        host: ${{ secrets.HOST }}
+        user: jenkins
+        key: ${{ secrets.PRIVATE_KEY }}
+        args: -tt

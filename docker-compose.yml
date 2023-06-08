@@ -1,0 +1,38 @@
+version: '2.15'
+
+services:
+
+  db:
+      image: postgres:alpine3.18
+      volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      ports:
+        - "5432:5432"
+      env_file:
+        - .env
+      environment:
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=notes
+      networks:
+        - db_network
+
+  webapp:
+    build: .
+    image: timkerekes/acg-flask-web-app
+    depends_on: [db]
+    environment:
+      - DEBUG=False
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=notes
+    ports:
+      - "80:80"
+    networks:
+      - db_network
+
+networks:
+    db_network:
+
+volumes:
+  postgres_data:
